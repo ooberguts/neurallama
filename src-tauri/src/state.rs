@@ -52,6 +52,3 @@ impl AppState {
 /// Result type for every #[tauri::command]: errors are plain-English strings for the UI.
 pub type CmdResult<T> = Result<T, String>;
 
-pub fn err<E: std::fmt::Display>(context: &str) -> impl FnOnce(E) -> String + '_ {
-    move |e| format!("{context}: {e}")
-}

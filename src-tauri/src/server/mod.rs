@@ -38,7 +38,7 @@ pub enum ServerState {
     Attached,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerStatus {
     pub state: ServerState,
@@ -65,11 +65,70 @@ pub struct CommandPreview {
     pub display: String,
 }
 
-/// Find the llama-server executable: custom path, else the active managed build.
+/// Executable name of llama-server on this platform.
+pub const SERVER_EXE_NAME: &str = if cfg!(windows) { "llama-server.exe" } else { "llama-server" };
+
+/// Find the llama-server executable: custom path, else the active managed build
+/// (`paths.engines/<active_engine>/`, searched up to 2 levels deep).
 pub fn resolve_server_exe(
     paths: &crate::settings::Paths,
     settings: &crate::settings::Settings,
 ) -> Result<std::path::PathBuf, String> {
-    let _ = (paths, settings);
-    Err("not implemented".into())
+    use std::path::{Path, PathBuf};
+    if let Some(custom) = settings.custom_server_exe.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        let p = PathBuf::from(custom);
+        return if p.is_file() {
+            Ok(p)
+        } else {
+            Err(format!("The custom llama-server path doesn't exist: {custom}. Fix it in Settings → Engine."))
+        };
+    }
+    const NONE: &str = "No llama.cpp build installed — open Settings → Engine";
+    let tag = settings.active_engine.as_deref().filter(|t| !t.trim().is_empty()).ok_or(NONE)?;
+    fn find(dir: &Path, depth: u32) -> Option<PathBuf> {
+        let direct = dir.join(SERVER_EXE_NAME);
+        if direct.is_file() {
+            return Some(direct);
+        }
+        if depth == 0 {
+            return None;
+        }
+        let mut subdirs: Vec<PathBuf> = std::fs::read_dir(dir)
+            .ok()?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
+        subdirs.sort();
+        subdirs.iter().find_map(|d| find(d, depth - 1))
+    }
+    find(&paths.engines.join(tag), 2).ok_or_else(|| {
+        format!("No llama.cpp build installed — open Settings → Engine (llama-server not found in build \"{tag}\")")
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::{Paths, Settings};
+
+    #[test]
+    fn resolves_exe() {
+        let root = std::env::temp_dir().join(format!("nl-exe-{}", crate::settings::new_id()));
+        let paths = Paths::from_root(root.clone());
+        paths.ensure().unwrap();
+        let mut s = Settings::default();
+        assert!(resolve_server_exe(&paths, &s).unwrap_err().starts_with("No llama.cpp build installed"));
+        s.active_engine = Some("b9000".into());
+        assert!(resolve_server_exe(&paths, &s).is_err());
+        let nested = paths.engines.join("b9000").join("bin").join("Release");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join(SERVER_EXE_NAME), b"").unwrap();
+        assert_eq!(resolve_server_exe(&paths, &s).unwrap(), nested.join(SERVER_EXE_NAME));
+        s.custom_server_exe = Some(root.join("nope.exe").display().to_string());
+        assert!(resolve_server_exe(&paths, &s).unwrap_err().contains("custom"));
+        s.custom_server_exe = Some(nested.join(SERVER_EXE_NAME).display().to_string());
+        assert!(resolve_server_exe(&paths, &s).is_ok());
+        std::fs::remove_dir_all(root).ok();
+    }
 }

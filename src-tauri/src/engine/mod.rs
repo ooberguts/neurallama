@@ -39,6 +39,10 @@ pub struct Release {
     pub prerelease: bool,
     pub html_url: String,
     pub assets: Vec<EngineAsset>,
+    /// For a stable `v*` release: its tag (e.g. "v0.9.0"). `tag` is then the `b*` build it
+    /// promotes, whose Windows zips are listed in `assets`.
+    #[serde(default)]
+    pub stable_tag: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

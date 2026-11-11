@@ -69,14 +69,61 @@ pub fn run() {
             app_commands::tip_dismiss,
             app_commands::open_path,
             // --- server (server agent) ---
+            server::commands::server_status,
+            server::commands::server_start,
+            server::commands::server_stop,
+            server::commands::server_restart,
+            server::commands::server_log_tail,
+            server::commands::server_command_preview,
+            server::commands::server_next_free_port,
             // --- end server ---
             // --- engine + models (models agent) ---
+            engine::commands::engine_installed,
+            engine::commands::engine_releases,
+            engine::commands::engine_install,
+            engine::commands::engine_set_active,
+            engine::commands::engine_remove,
+            engine::commands::engine_driver_info,
+            models::commands::models_scan,
+            models::commands::model_meta,
+            models::commands::model_delete,
+            models::commands::model_serve,
+            models::commands::hf_search,
+            models::commands::hf_files,
+            models::commands::download_start,
+            models::commands::download_pause,
+            models::commands::download_resume,
+            models::commands::download_cancel,
+            models::commands::downloads_list,
+            models::commands::hf_token_set,
+            models::commands::hf_token_status,
+            models::commands::disk_free,
             // --- end models ---
             // --- telemetry + fit (telemetry agent) ---
+            telemetry::commands::telemetry_snapshot,
+            telemetry::commands::stats_list,
+            telemetry::commands::stats_reset,
+            telemetry::commands::gpu_processes,
+            fit::commands::fit_estimate,
+            fit::commands::autotune_start,
+            fit::commands::autotune_cancel,
+            fit::commands::benchmark_run,
             // --- end telemetry ---
             // --- clients (main session) ---
+            clients::commands::connect_info,
+            clients::commands::connect_test,
+            clients::commands::hermes_targets,
+            clients::commands::hermes_push,
+            clients::commands::continue_push,
             // --- end clients ---
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Neurallama");
+        .build(tauri::generate_context!())
+        .expect("error while building Neurallama")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                // Stop llama-server (the Job Object is the backstop) and save stats.
+                server::commands::on_exit(app);
+                app.state::<AppState>().telemetry.flush();
+            }
+        });
 }

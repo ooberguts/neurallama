@@ -20,6 +20,12 @@ pub struct FitInput {
     pub parallel: u32,
     /// Override detected VRAM (bytes) — for planning on another machine.
     pub vram_total_override: Option<u64>,
+    /// `-ub` (default 512); scales the compute-buffer estimate. Optional for the UI.
+    #[serde(default)]
+    pub ubatch: Option<u32>,
+    /// Flash attention; None = on (the profile default). Off adds the KQ score buffer.
+    #[serde(default)]
+    pub flash_attn: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

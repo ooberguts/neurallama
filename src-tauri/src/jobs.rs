@@ -116,11 +116,4 @@ impl Jobs {
             None => false,
         }
     }
-
-    /// Drop finished jobs from the list.
-    pub fn clear_finished(&self) {
-        self.inner.lock().retain(|_, (_, p)| {
-            !matches!(p.state, JobState::Done | JobState::Error | JobState::Cancelled)
-        });
-    }
 }

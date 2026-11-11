@@ -32,6 +32,7 @@ sysinfo = "0.33"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 log = "0.4"
+serde_yaml = "0.9"
 
 [target.'cfg(any(windows, target_os = "linux"))'.dependencies]
 nvml-wrapper = "0.10"
