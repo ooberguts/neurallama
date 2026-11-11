@@ -47,6 +47,25 @@ pub fn parse_timings(v: &Value) -> Option<(u32, f64, u32, f64)> {
 
 pub async fn run(app: &AppHandle, profile_id: Option<String>) -> Result<BenchResult, String> {
     let state = app.state::<AppState>();
+    let _work = state.claim_server_work()?;
+    let mut started_here = false;
+    let (id, handle) = state.jobs.create("benchmark", "Benchmark");
+    crate::models::download::set_job(app, &id, |p| p.state = crate::jobs::JobState::Running);
+    let result = run_inner(app, profile_id, &handle, &mut started_here).await;
+    if result.is_err() && started_here {
+        let _ = state.server.stop(app).await;
+    }
+    crate::models::download::set_job(app, &id, |p| {
+        p.state = if handle.cancelled() { crate::jobs::JobState::Cancelled }
+            else if result.is_ok() { crate::jobs::JobState::Done }
+            else { crate::jobs::JobState::Error };
+        p.message = result.as_ref().err().cloned();
+    });
+    result
+}
+
+async fn run_inner(app: &AppHandle, profile_id: Option<String>, handle: &crate::jobs::JobHandle, started_here: &mut bool) -> Result<BenchResult, String> {
+    let state = app.state::<AppState>();
     let settings = state.settings();
     let status = state.server.status();
     let ready = matches!(status.state, ServerState::Ready | ServerState::Attached);
@@ -58,11 +77,19 @@ pub async fn run(app: &AppHandle, profile_id: Option<String>) -> Result<BenchRes
             .or_else(|| settings.active_profile.clone())
             .ok_or("No profile to benchmark. Pick a model to serve first.")?;
         let profile = settings.profile(&id).cloned().ok_or("Profile not found.")?;
-        if !matches!(status.state, ServerState::Stopped | ServerState::Crashed) {
-            state.server.stop(app).await?;
+        if handle.cancelled() {
+            return Err("Benchmark cancelled.".into());
         }
+        // Finish the serialized start operation before honoring cancellation.
         state.server.start(app, &profile, &settings).await?;
-        state.server.wait_ready(LOAD_TIMEOUT).await.map_err(|e| format!("Server did not become ready: {e}"))?;
+        *started_here = true;
+        tokio::select! {
+            r = state.server.wait_ready(LOAD_TIMEOUT) => r.map_err(|e| format!("Server did not become ready: {e}"))?,
+            _ = handle.until_cancelled() => return Err("Benchmark cancelled.".into()),
+        }
+    }
+    if handle.cancelled() {
+        return Err("Benchmark cancelled.".into());
     }
     let target = profile_id.or(state.server.status().profile_id).or(settings.active_profile.clone());
 
@@ -74,14 +101,22 @@ pub async fn run(app: &AppHandle, profile_id: Option<String>) -> Result<BenchRes
         "temperature": 0.0,
         "stream": false,
     });
-    let mut req = state.http.post(format!("{}/completion", settings.base_url())).timeout(REQUEST_TIMEOUT).json(&body);
-    if !settings.api_key.is_empty() {
-        req = req.bearer_auth(&settings.api_key);
+    let (url, key) = state.server.connection().unwrap_or_else(|| (settings.base_url(), settings.api_key.clone()));
+    let mut req = state.http.post(format!("{url}/completion")).timeout(REQUEST_TIMEOUT).json(&body);
+    if !key.is_empty() {
+        req = req.bearer_auth(&key);
     }
     let t0 = Instant::now();
-    let resp = req.send().await.map_err(|e| format!("Benchmark request failed: {e}"))?;
-    let code = resp.status();
-    let text = resp.text().await.map_err(|e| format!("Benchmark response failed: {e}"))?;
+    let request = async {
+        let resp = req.send().await.map_err(|e| format!("Benchmark request failed: {e}"))?;
+        let code = resp.status();
+        let text = resp.text().await.map_err(|e| format!("Benchmark response failed: {e}"))?;
+        Ok::<_, String>((code, text))
+    };
+    let (code, text) = tokio::select! {
+        r = request => r?,
+        _ = handle.until_cancelled() => return Err("Benchmark cancelled.".into()),
+    };
     let total_ms = t0.elapsed().as_millis() as u64;
     if !code.is_success() {
         return Err(format!("Server returned {code}: {}", text.chars().take(300).collect::<String>()));

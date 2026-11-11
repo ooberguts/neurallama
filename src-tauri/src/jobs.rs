@@ -44,6 +44,17 @@ impl JobHandle {
     pub fn cancelled(&self) -> bool {
         self.cancel.load(Ordering::Relaxed)
     }
+    /// Cancellation also interrupts requests that aren't producing any data.
+    pub async fn until_cancelled(&self) {
+        while !self.cancelled() {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
+    pub async fn until_paused(&self) {
+        while !self.paused() {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
     pub fn paused(&self) -> bool {
         self.pause.load(Ordering::Relaxed)
     }
@@ -97,6 +108,14 @@ impl Jobs {
             .collect()
     }
 
+    pub fn cancel_server_work(&self) {
+        for (handle, progress) in self.inner.lock().values() {
+            if matches!(progress.kind.as_str(), "autotune" | "benchmark") {
+                handle.cancel.store(true, Ordering::Relaxed);
+            }
+        }
+    }
+
     pub fn cancel(&self, id: &str) -> bool {
         match self.inner.lock().get(id) {
             Some((h, _)) => {
@@ -115,5 +134,22 @@ impl Jobs {
             }
             None => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stopping_server_cancels_tuning_and_benchmarks_only() {
+        let jobs = Jobs::default();
+        let (_, tune) = jobs.create("autotune", "Tune");
+        let (_, bench) = jobs.create("benchmark", "Benchmark");
+        let (_, download) = jobs.create("download", "Model");
+        jobs.cancel_server_work();
+        assert!(tune.cancelled());
+        assert!(bench.cancelled());
+        assert!(!download.cancelled());
     }
 }

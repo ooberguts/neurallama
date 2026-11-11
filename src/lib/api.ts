@@ -58,7 +58,7 @@ export interface Commands {
   engine_install: [{ tag: string; assetName: string }, string];
   engine_set_active: [{ tag: string }, Settings];
   engine_remove: [{ tag: string }, InstalledEngine[]];
-  engine_driver_info: [undefined, DriverInfo];
+  engine_driver_info: [{ cudaVersion: string | null } | undefined, DriverInfo];
   // models
   models_scan: [{ withMeta: boolean }, LocalModel[]];
   model_meta: [{ path: string }, GgufSummary];
@@ -169,7 +169,7 @@ export const api = {
   engineInstall: (tag: string, assetName: string) => call("engine_install", { tag, assetName }),
   engineSetActive: (tag: string) => call("engine_set_active", { tag }),
   engineRemove: (tag: string) => call("engine_remove", { tag }),
-  engineDriverInfo: () => call("engine_driver_info"),
+  engineDriverInfo: (cudaVersion: string | null = null) => call("engine_driver_info", { cudaVersion }),
 
   modelsScan: (withMeta = true) => call("models_scan", { withMeta }),
   modelMeta: (path: string) => call("model_meta", { path }),

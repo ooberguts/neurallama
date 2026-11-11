@@ -104,7 +104,7 @@ export async function initStores() {
   await Promise.all([
     events.serverStatus((s) => server.set(s)),
     events.serverLog((lines) => server.addLogs(lines)),
-    events.telemetry((s) => (telemetry.snap = s)),
+    events.telemetry((s) => { telemetry.snap = s; }),
     events.jobProgress((j) => {
       jobs.set(j);
       jobs._emitFinish(j);
@@ -115,8 +115,8 @@ export async function initStores() {
   const results = await Promise.allSettled([
     settings.load(),
     api.serverStatus().then((s) => server.set(s)),
-    api.serverLogTail(500).then((l) => (server.logs = l)),
-    api.telemetrySnapshot().then((s) => (telemetry.snap ??= s)),
+    api.serverLogTail(500).then((l) => { server.logs = l; }),
+    api.telemetrySnapshot().then((s) => { if (!telemetry.snap) telemetry.snap = s; }),
     api.downloadsList().then((list) => list.forEach((j) => jobs.set(j))),
   ]);
   for (const r of results) if (r.status === "rejected") toasts.error(r.reason);

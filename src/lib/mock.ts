@@ -64,8 +64,8 @@ const meta35: GgufSummary = {
   kvLayersSource: "exact",
   recurrentStateBytes: 63 * MiB,
   isMoe: true,
-  expertTensorBytes: Math.round(23.1 * GiB),
-  totalTensorBytes: Math.round(24.6 * GiB),
+  expertTensorBytes: Math.round(21.5 * GiB),
+  totalTensorBytes: Math.round(22.8 * GiB),
 };
 const meta27: GgufSummary = {
   architecture: "qwen35",
@@ -115,7 +115,7 @@ let models: LocalModel[] = [
     name: "Qwen3.6-35B-A3B-GGUF",
     primaryPath: M35,
     files: [M35],
-    sizeBytes: Math.round(24.7 * GiB),
+    sizeBytes: Math.round(22.9 * GiB),
     mmprojPath: `${ROOT}\\models\\unsloth\\Qwen3.6-35B-A3B-GGUF\\mmproj-F16.gguf`,
     quant: "UD-Q5_K_M",
     sourceKnown: true,
@@ -184,7 +184,7 @@ let settings: Settings = {
   apiKey: "nl-3f9c2a7e1b4d48f0a6c5e2d1b7f8a9c0",
   alias: "local",
   lanMode: false,
-  activeEngine: "b7012-cuda-12.8",
+  activeEngine: "b7012-cuda-13.1",
   customServerExe: null,
   engineChannel: "stable",
   activeProfile: "preset-qwen3.6-35b-a3b-q5km-128k",
@@ -241,17 +241,17 @@ let status: ServerStatus = {
 
 let engines: InstalledEngine[] = [
   {
-    tag: "b7012-cuda-12.8",
+    tag: "b7012-cuda-13.1",
     flavor: "cuda",
-    dir: `${ROOT}\\llama.cpp\\b7012-cuda-12.8`,
-    serverExe: `${ROOT}\\llama.cpp\\b7012-cuda-12.8\\llama-server.exe`,
+    dir: `${ROOT}\\llama.cpp\\b7012-cuda-13.1`,
+    serverExe: `${ROOT}\\llama.cpp\\b7012-cuda-13.1\\llama-server.exe`,
     active: true,
   },
   {
-    tag: "b6940-cuda-12.8",
+    tag: "b6940-cuda-13.1",
     flavor: "cuda",
-    dir: `${ROOT}\\llama.cpp\\b6940-cuda-12.8`,
-    serverExe: `${ROOT}\\llama.cpp\\b6940-cuda-12.8\\llama-server.exe`,
+    dir: `${ROOT}\\llama.cpp\\b6940-cuda-13.1`,
+    serverExe: `${ROOT}\\llama.cpp\\b6940-cuda-13.1\\llama-server.exe`,
     active: false,
   },
   {
@@ -267,21 +267,21 @@ function assetsFor(tag: string): EngineAsset[] {
   const gh = `https://github.com/ggml-org/llama.cpp/releases/download/${tag}`;
   return [
     {
-      name: `llama-${tag}-bin-win-cuda-12.8-x64.zip`,
-      url: `${gh}/llama-${tag}-bin-win-cuda-12.8-x64.zip`,
+      name: `llama-${tag}-bin-win-cuda-12.4-x64.zip`,
+      url: `${gh}/llama-${tag}-bin-win-cuda-12.4-x64.zip`,
       size: 214 * MiB,
       flavor: "cuda",
-      cudaVersion: "12.8",
-      cudartUrl: `${gh}/cudart-llama-bin-win-cuda-12.8-x64.zip`,
+      cudaVersion: "12.4",
+      cudartUrl: `${gh}/cudart-llama-bin-win-cuda-12.4-x64.zip`,
       cudartSize: 467 * MiB,
     },
     {
-      name: `llama-${tag}-bin-win-cuda-13.0-x64.zip`,
-      url: `${gh}/llama-${tag}-bin-win-cuda-13.0-x64.zip`,
+      name: `llama-${tag}-bin-win-cuda-13.1-x64.zip`,
+      url: `${gh}/llama-${tag}-bin-win-cuda-13.1-x64.zip`,
       size: 198 * MiB,
       flavor: "cuda",
-      cudaVersion: "13.0",
-      cudartUrl: `${gh}/cudart-llama-bin-win-cuda-13.0-x64.zip`,
+      cudaVersion: "13.1",
+      cudartUrl: `${gh}/cudart-llama-bin-win-cuda-13.1-x64.zip`,
       cudartSize: 389 * MiB,
     },
     {
@@ -310,8 +310,9 @@ function releases(): Release[] {
     { tag: "b7025", publishedAt: "2026-11-10T14:40:00Z", prerelease: false },
     { tag: "b7012", publishedAt: "2026-11-07T09:03:00Z", prerelease: false },
     { tag: "b6940", publishedAt: "2026-10-28T18:22:00Z", prerelease: false },
-  ].map((r) => ({
+  ].map((r, i) => ({
     ...r,
+    stableTag: settings.engineChannel === "stable" ? ["v1.31.0", "v1.30.2", "v1.30.0", "v1.29.1"][i] : null,
     htmlUrl: `https://github.com/ggml-org/llama.cpp/releases/tag/${r.tag}`,
     assets: assetsFor(r.tag),
   }));
@@ -341,8 +342,8 @@ const hermes: HermesTarget[] = [
     distro: null,
     profile: "default",
     isDefault: true,
-    home: "C:\\Users\\you\\.hermes",
-    configPath: "C:\\Users\\you\\.hermes\\config.yaml",
+    home: "C:\\Users\\you\\AppData\\Local\\hermes",
+    configPath: "C:\\Users\\you\\AppData\\Local\\hermes\\config.yaml",
     configExists: true,
     currentProvider: "openrouter",
     currentModel: "qwen/qwen3-coder",
@@ -356,8 +357,8 @@ const hermes: HermesTarget[] = [
     distro: null,
     profile: "local-dev",
     isDefault: false,
-    home: "C:\\Users\\you\\.hermes\\profiles\\local-dev",
-    configPath: "C:\\Users\\you\\.hermes\\profiles\\local-dev\\config.yaml",
+    home: "C:\\Users\\you\\AppData\\Local\\hermes\\profiles\\local-dev",
+    configPath: "C:\\Users\\you\\AppData\\Local\\hermes\\profiles\\local-dev\\config.yaml",
     configExists: true,
     currentProvider: "neurallama",
     currentModel: "local",
@@ -644,13 +645,13 @@ function fit(input: FitInput): FitResult {
   const vl = meta.valueLength ?? 128;
   const kvb = kvLayers * input.ctxSize * hk * (kl * kvBytesPer(input.cacheTypeK) + vl * kvBytesPer(input.cacheTypeV));
   const rec = (meta.recurrentStateBytes ?? 0) * input.parallel;
-  const over = 1.15 * GiB + input.ctxSize * 2048;
-  const reserve = 1.75 * GiB;
+  const over = 0.85 * GiB + input.ctxSize * 1024 * (input.flashAttn === false ? 3 : 1) + (input.ubatch ?? 512) * 0.4 * MiB;
+  const reserve = 1.5 * GiB;
   const need = gpuW + kvb + rec + over + reserve;
-  const verdict = need <= vramTotal * 0.92 ? "fits" : need <= vramTotal ? "tight" : "wont_fit";
+  const verdict = need <= vramTotal * 0.94 ? "fits" : need <= vramTotal ? "tight" : "wont_fit";
   const sugg: Suggestion[] = [];
   if (verdict !== "fits") {
-    const room = vramTotal * 0.92 - (gpuW + rec + over + reserve);
+    const room = vramTotal * 0.94 - (gpuW + rec + over + reserve);
     const perTok = kvb / input.ctxSize;
     let c = Math.floor(room / perTok / 4096) * 4096;
     if (c >= 4096 && c < input.ctxSize) sugg.push({ kind: "lower_ctx", label: `Lower context to ${Math.round(c / 1024)}K`, patch: { ctxSize: c } });
@@ -794,7 +795,7 @@ const h: Handlers = {
     return logs.slice(-lines);
   },
   server_command_preview: ({ profile: p }) => {
-    const exe = `${ROOT}\\llama.cpp\\${settings.activeEngine ?? "b7012-cuda-12.8"}\\llama-server.exe`;
+    const exe = `${ROOT}\\llama.cpp\\${settings.activeEngine ?? "b7012-cuda-13.1"}\\llama-server.exe`;
     const a: string[] = ["-m", p.modelPath];
     if (p.mmprojPath) a.push("--mmproj", p.mmprojPath);
     a.push("-ngl", String(p.ngl));
@@ -851,13 +852,13 @@ const h: Handlers = {
     engines = engines.filter((x) => x.tag !== tag);
     return engines;
   },
-  engine_driver_info: () => ({
-    gpuName: "NVIDIA GeForce RTX 5090 Laptop GPU",
-    driverVersion: "581.57",
-    cudaDriverVersion: "13.0",
-    computeCap: "12.0",
-    warnings: [],
-  }),
+  engine_driver_info: (a) => {
+    const cv = a?.cudaVersion ?? null;
+    const warnings: string[] = [];
+    if (cv && Number(cv) < 12.8) warnings.push(`CUDA ${cv} builds have no Blackwell (sm_120) kernels. RTX 50-series needs a CUDA 13.x build.`);
+    if (cv && Number(cv) > 13.1) warnings.push(`CUDA ${cv} needs a newer driver than 581.57.`);
+    return { gpuName: "NVIDIA GeForce RTX 5090 Laptop GPU", driverVersion: "581.57", cudaDriverVersion: "13.1", computeCap: "12.0", warnings };
+  },
 
   models_scan: async () => {
     await sleep(250);
@@ -932,6 +933,10 @@ const h: Handlers = {
   },
   download_cancel: ({ jobId }) => {
     const j = jobs.get(jobId);
+    if (j && j.kind !== "download") {
+      j._cancel = true;
+      return null;
+    }
     if (j) {
       j.state = "cancelled";
       j.message = "Cancelled; partial file removed";
@@ -994,11 +999,24 @@ const h: Handlers = {
     return null;
   },
   benchmark_run: async ({ profileId }) => {
+    const jobId = rid();
+    const progress: JobProgress = { jobId, kind: "benchmark", label: "Benchmark", done: 0, total: null, state: "running", message: null };
+    jobs.set(jobId, progress);
+    emit("job-progress", progress);
     if (status.state !== "ready") throw "Start the server first; the benchmark runs through it.";
-    await sleep(2500);
+    for (let elapsed = 0; elapsed < 2500; elapsed += 100) {
+      await sleep(100);
+      if (jobs.get(jobId)?._cancel) {
+        jobs.set(jobId, { ...progress, state: "cancelled", message: "Benchmark cancelled." });
+        emit("job-progress", jobs.get(jobId)!);
+        throw "Benchmark cancelled.";
+      }
+    }
     const r = { promptTokens: 2048, genTokens: 256, promptTps: 2280 + Math.random() * 120, genTps: 90 + Math.random() * 8, totalMs: 3540 };
     const p = settings.profiles.find((x) => x.id === (profileId ?? settings.activeProfile));
     if (p) p.bench = { at: new Date().toISOString(), promptTps: r.promptTps, genTps: r.genTps };
+    jobs.set(jobId, { ...progress, state: "done" });
+    emit("job-progress", jobs.get(jobId)!);
     return r;
   },
 

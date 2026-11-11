@@ -46,7 +46,7 @@ Events: `server-status` → `ServerStatus` (on every state change), `server-log`
 | `engine_install` | `tag, asset_name` | job id `String` (progress via `job-progress`, kind `engine`) |
 | `engine_set_active` | `tag` | `Settings` |
 | `engine_remove` | `tag` | `Vec<InstalledEngine>` (refuses the active one while the server runs) |
-| `engine_driver_info` | — | `DriverInfo` |
+| `engine_driver_info` | `cuda_version: Option<String>` (selected asset) | `DriverInfo` |
 
 ## Models (`models/commands.rs`)
 
@@ -76,7 +76,7 @@ Events: `server-status` → `ServerStatus` (on every state change), `server-log`
 | `fit_estimate` | `input: FitInput` | `FitResult` |
 | `autotune_start` | `profile_id` | job id (kind `autotune`) |
 | `autotune_cancel` | `job_id` | `()` |
-| `benchmark_run` | `profile_id: Option<String>` | `BenchResult` (also saved to the profile) |
+| `benchmark_run` | `profile_id: Option<String>` | `BenchResult` (also saved to the profile); emits a `benchmark` job, cancellable with `download_cancel` |
 
 Events: `telemetry` → `Snapshot` (1 Hz, only while the window is visible is fine but not required).
 

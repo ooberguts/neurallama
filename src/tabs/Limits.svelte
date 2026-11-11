@@ -71,7 +71,7 @@
       baseline = null;
     } else {
       const p = settings.profile(t);
-      if (!p) return;
+      if (!p) { draft = null; baseline = null; return; }
       draft = clone(p);
       baseline = clone(p);
     }
@@ -163,7 +163,7 @@
       return;
     }
     if (s.kind === "close_apps") {
-      await busy.run("procs", async () => (procs = await api.gpuProcesses()));
+      await busy.run("procs", async () => { procs = await api.gpuProcesses(); });
     } else if (s.kind === "smaller_quant") {
       toasts.info("Download a smaller quant in Models → Get, then pick it here.");
     }
@@ -226,7 +226,7 @@
       jobs.onFinish(j, async (p) => {
         if (p.state !== "done") return;
         await settings.load();
-        if (target === id) select(id);
+        if (target === id && !dirty) select(id);
         toasts.ok(p.message ?? "Auto-tune finished.");
       });
     });
@@ -241,16 +241,18 @@
     const prev = settings.profile(id)?.bench ?? null;
     await busy.run("bench", async () => {
       const r = await api.benchmarkRun(id);
-      benchResult = { r, prev };
+      if (target === id) benchResult = { r, prev };
       const fresh = await api.settingsGet();
       settings.set(fresh);
       const p = fresh.profiles.find((x) => x.id === id);
-      if (p && baseline && draft) {
+      if (p && baseline && draft && target === id) {
         baseline.bench = p.bench;
         draft.bench = p.bench;
       }
     });
   }
+  const benchmarkJob = $derived(jobs.ofKind("benchmark").find((j) => j.state === "running" || j.state === "queued"));
+  const cancelBench = () => benchmarkJob && busy.run("benchcancel", () => api.downloadCancel(benchmarkJob.jobId));
   const delta = (a: number, b: number | undefined) => (b ? `${a >= b ? "+" : ""}${(((a - b) / b) * 100).toFixed(1)}%` : "");
 
   // ---- tip ----
@@ -279,7 +281,7 @@
   const presets = [16384, 32768, 65536, 131072];
 
   async function loadModels() {
-    await busy.run("models", async () => (models = await api.modelsScan(true)));
+    await busy.run("models", async () => { models = await api.modelsScan(true); });
   }
 
   onMount(async () => {
@@ -438,7 +440,7 @@
     {/if}
   </div>
 
-  <div class="card col savebar" class:dirty={dirty || aliasDirty}>
+  <div class="card col savebar" class:dirty={dirty || aliasDirty || isNew}>
     <div class="row">
       {#if isNew}<span class="chip warn">new profile</span>
       {:else if dirty || aliasDirty}<span class="chip warn">unsaved</span>
@@ -448,15 +450,14 @@
       <button class="mini" disabled={!dirty || isNew} onclick={revert}>Revert</button>
       <button class="mini go" class:busy={busy.is("save")} disabled={(!dirty && !aliasDirty) || busy.is("save")} onclick={save}>Save to profile</button>
     </div>
-    {#if servingThis && !dirty}<div class="hint">This profile is running. Restart the server to pick up saved changes.</div>{/if}
   </div>
 
   <div class="card col">
     <div class="row">
-      <button class="mini" class:busy={busy.is("tune")} disabled={isNew || dirty || tuning || busy.is("tune") || (meta != null && !meta.isMoe)} onclick={autotune} title={meta && !meta.isMoe ? "Only for MoE models" : "Relaunches the server, measures VRAM and adjusts until ~92% full, then saves"}
+      <button class="mini" class:busy={busy.is("tune")} disabled={isNew || dirty || tuning || busy.is("bench") || busy.is("tune") || (meta != null && !meta.isMoe)} onclick={autotune} title={meta && !meta.isMoe ? "Only for MoE models" : "Relaunches the server, measures VRAM and adjusts until ~92% full, then saves"}
         >Auto-tune --n-cpu-moe</button
       >
-      <button class="mini" class:busy={busy.is("bench")} disabled={isNew || dirty || busy.is("bench")} onclick={bench} title="Short fixed prompt through the server">Benchmark</button>
+      <button class="mini" class:busy={busy.is("bench")} disabled={isNew || dirty || tuning || busy.is("bench")} onclick={bench} title="Short fixed prompt through the server">Benchmark</button>
       <span class="sp"></span>
       {#if isNew || dirty}<span class="hint">save first</span>{/if}
     </div>
@@ -471,7 +472,7 @@
         <div class="bar thin"><div class="fill dl" style:width="{tune.total ? (tune.done / tune.total) * 100 : 0}%"></div></div>
       </div>
     {/if}
-    {#if busy.is("bench")}<div class="hint">Running benchmark…</div>{/if}
+    {#if busy.is("bench")}<div class="row hint">Running benchmark…<span class="sp"></span>{#if benchmarkJob}<button class="mini danger" disabled={busy.is("benchcancel")} onclick={cancelBench}>Cancel benchmark</button>{/if}</div>{/if}
     {#if benchResult}
       {@const r = benchResult.r}
       {@const prev = benchResult.prev}
@@ -653,13 +654,11 @@
     border-radius: 7px;
     padding: 5px 8px;
   }
-  .savebar {
+  .savebar.dirty {
     position: sticky;
     bottom: 0;
     z-index: 2;
     box-shadow: 0 -4px 12px #0003;
-  }
-  .savebar.dirty {
     border-color: color-mix(in srgb, var(--warn) 40%, transparent);
   }
   .tight {

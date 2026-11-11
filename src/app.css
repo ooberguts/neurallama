@@ -22,7 +22,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-preview-theme="dark"]) {
     color-scheme: light;
     --bg: #f3f4f8;
     --card: #ffffff;
@@ -43,6 +43,27 @@
   }
 }
 
+:root[data-preview-theme="light"] {
+    color-scheme: light;
+    --bg: #f3f4f8;
+    --card: #ffffff;
+    --card2: #f0f2f7;
+    --hover: #e6e9f1;
+    --inset: #eceef4;
+    --line: #dcdfe8;
+    --tx: #161a24;
+    --dim: #5a6275;
+    --faint: #7c8396;
+    --code: #2a3242;
+    --ok: #12a865;
+    --warn: #c77a00;
+    --crit: #d93a4a;
+    --acc: #2f6fe0;
+    --vio: #7656e0;
+    --toast: #ffffffee;
+}
+
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -52,6 +73,10 @@ html,
 body,
 #app {
   height: 100%;
+}
+html,
+body {
+  overflow: clip;
 }
 body {
   background: var(--bg);

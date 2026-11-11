@@ -16,9 +16,15 @@ pub fn settings_save(app: AppHandle, state: State<'_, AppState>, settings: Setti
         return Err("LAN mode needs an API key. Generate one before binding to 0.0.0.0.".into());
     }
     let prev = state.settings();
+    if prev.start_with_windows != settings.start_with_windows {
+        set_autostart(&app, settings.start_with_windows)?;
+    }
+    if settings.tray && app.tray_by_id("main").is_none() {
+        crate::tray::create(&app).map_err(|e| format!("Could not create tray icon: {e}"))?;
+    }
     let saved = state.update_settings(|s| *s = settings)?;
-    if prev.start_with_windows != saved.start_with_windows {
-        set_autostart(&app, saved.start_with_windows)?;
+    if !saved.tray {
+        app.remove_tray_by_id("main");
     }
     if prev.always_on_top != saved.always_on_top {
         if let Some(w) = app.get_webview_window("main") {

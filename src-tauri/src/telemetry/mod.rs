@@ -207,8 +207,8 @@ pub fn spawn_poller(app: AppHandle) {
             let metrics = if matches!(status.state, ServerState::Ready | ServerState::Attached) {
                 let settings = state.settings();
                 let session = format!("{:?}|{:?}|{}", status.pid, status.started_at, status.port);
-                let (m, delta) =
-                    poller.poll(&state.http, &settings.base_url(), &settings.api_key, &session).await;
+                let (url, key) = state.server.connection().unwrap_or_else(|| (settings.base_url(), settings.api_key));
+                let (m, delta) = poller.poll(&state.http, &url, &key, &session).await;
                 if let Some(key) = model_key(status.model_path.as_deref(), m.model.as_deref()) {
                     let sample = if delta.generating { m.gen_tps } else { None };
                     state.telemetry.stats.lock().record(&key, delta.gen_tokens, delta.requests, sample);

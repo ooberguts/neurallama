@@ -103,9 +103,11 @@ pub fn display_line(program: &str, args: &[String]) -> String {
 /// Same as [`display_line`] but with the `--api-key` value masked, for logs and status.
 pub fn redacted_display(program: &str, args: &[String]) -> String {
     let mut masked = args.to_vec();
-    for i in 0..masked.len().saturating_sub(1) {
-        if masked[i] == "--api-key" {
+    for i in 0..masked.len() {
+        if masked[i] == "--api-key" && i + 1 < masked.len() {
             masked[i + 1] = "***".into();
+        } else if masked[i].starts_with("--api-key=") {
+            masked[i] = "--api-key=***".into();
         }
     }
     display_line(program, &masked)
@@ -203,6 +205,14 @@ mod tests {
 
     fn value_of<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
         args.iter().position(|a| a == flag).map(|i| args[i + 1].as_str())
+    }
+
+    #[test]
+    fn redacts_equals_form_extra_key() {
+        let args = vec!["--api-key=secret-override".into(), "--api-key".into(), "another-secret".into()];
+        let shown = redacted_display("llama-server", &args);
+        assert!(!shown.contains("secret"));
+        assert!(shown.contains("--api-key=***"));
     }
 
     #[test]

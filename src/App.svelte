@@ -22,8 +22,18 @@
 
   // Tabs mount on first visit and stay mounted, so drafts survive tab switches.
   let visited = $state<Record<string, boolean>>({ monitor: true });
-  $effect(() => {
-    visited[ui.tab] = true;
+  // Each tab keeps its own scroll position in the shared scroller (pre: read before the DOM swaps panes).
+  let mainEl = $state<HTMLElement | null>(null);
+  const scrollPos: Record<string, number> = {};
+  let shownTab: TabId = "monitor";
+  $effect.pre(() => {
+    const t = ui.tab;
+    visited[t] = true;
+    if (!mainEl || t === shownTab) return;
+    scrollPos[shownTab] = mainEl.scrollTop;
+    shownTab = t;
+    const el = mainEl;
+    requestAnimationFrame(() => (el.scrollTop = scrollPos[t] ?? 0));
   });
 
   const busy = new Busy();
@@ -123,17 +133,17 @@
     {/each}
   </div>
 
-  <main>
+  <main bind:this={mainEl}>
     {#if ready}
       {#each tabs as t (t.id)}
         {#if visited[t.id]}
-          <section id="pane-{t.id}" role="tabpanel" aria-labelledby="tab-{t.id}" hidden={ui.tab !== t.id} class="pane">
+          <div id="pane-{t.id}" role="tabpanel" aria-labelledby="tab-{t.id}" hidden={ui.tab !== t.id} class="pane">
             {#if t.id === "monitor"}<Monitor />
             {:else if t.id === "models"}<Models />
             {:else if t.id === "limits"}<Limits />
             {:else if t.id === "connect"}<Connect />
             {:else}<SettingsTab />{/if}
-          </section>
+          </div>
         {/if}
       {/each}
     {:else}

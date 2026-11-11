@@ -102,7 +102,7 @@
     const q = query.trim();
     if (!q) return;
     picked = null;
-    await busy.run("find", async () => (repos = await api.hfSearch(q)));
+    await busy.run("find", async () => { repos = await api.hfSearch(q); });
   }
   async function pick(id: string) {
     if (picked === id) {

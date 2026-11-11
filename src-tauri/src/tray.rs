@@ -29,6 +29,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let state = app.state::<AppState>();
+                    state.jobs.cancel_server_work();
                     let _ = state.server.stop(&app).await;
                 });
             }
@@ -36,6 +37,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let state = app.state::<AppState>();
+                    state.jobs.cancel_server_work();
                     let _ = state.server.stop(&app).await;
                     app.exit(0);
                 });

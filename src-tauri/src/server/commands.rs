@@ -38,6 +38,7 @@ pub fn on_exit(app: &AppHandle) {
 /// Start the active profile (used by tray and model_serve).
 pub async fn start_active(app: &AppHandle) -> Result<super::ServerStatus, String> {
     let state = app.state::<AppState>();
+    let _work = state.claim_server_work()?;
     let settings = state.settings();
     let profile = settings.active().cloned().ok_or(NO_ACTIVE)?;
     state.server.start(app, &profile, &settings).await
@@ -55,6 +56,7 @@ pub fn server_status(state: State<'_, AppState>) -> ServerStatus {
 #[tauri::command]
 pub async fn server_start(app: AppHandle, profile_id: Option<String>) -> CmdResult<ServerStatus> {
     let state = app.state::<AppState>();
+    let _work = state.claim_server_work()?;
     let settings = state.settings();
     let profile = match profile_id {
         Some(id) => settings.profile(&id).cloned().ok_or_else(|| format!("Profile not found: {id}"))?,
@@ -66,6 +68,7 @@ pub async fn server_start(app: AppHandle, profile_id: Option<String>) -> CmdResu
 #[tauri::command]
 pub async fn server_stop(app: AppHandle) -> CmdResult<ServerStatus> {
     let state = app.state::<AppState>();
+    state.jobs.cancel_server_work();
     state.server.stop(&app).await
 }
 
@@ -73,6 +76,7 @@ pub async fn server_stop(app: AppHandle) -> CmdResult<ServerStatus> {
 #[tauri::command]
 pub async fn server_restart(app: AppHandle) -> CmdResult<ServerStatus> {
     let state = app.state::<AppState>();
+    let _work = state.claim_server_work()?;
     let settings = state.settings();
     let id = state.server.last_profile_id().or_else(|| settings.active_profile.clone());
     let profile = id

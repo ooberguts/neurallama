@@ -43,7 +43,7 @@ fn same_path(a: &str, b: &str) -> bool {
 
 fn server_busy(state: &AppState) -> Option<ServerStatus> {
     let st = state.server.status();
-    matches!(st.state, ServerState::Starting | ServerState::Loading | ServerState::Ready).then_some(st)
+    matches!(st.state, ServerState::Starting | ServerState::Loading | ServerState::Ready | ServerState::Attached).then_some(st)
 }
 
 #[tauri::command]
@@ -104,6 +104,7 @@ fn remove_empty_parents(file: &Path, stop: &Path) {
 
 #[tauri::command]
 pub async fn model_serve(app: AppHandle, state: State<'_, AppState>, id: String) -> CmdResult<ServerStatus> {
+    let _work = state.claim_server_work()?;
     let models = scan_models(&state, false).await?;
     let model = models.into_iter().find(|m| m.id == id).ok_or("That model is no longer on disk.")?;
     let existing = state.settings().profiles.iter().find(|p| same_path(&p.model_path, &model.primary_path)).cloned();
@@ -126,7 +127,6 @@ pub async fn model_serve(app: AppHandle, state: State<'_, AppState>, id: String)
         }
         s.active_profile = Some(pid);
     })?;
-    state.server.stop(&app).await?;
     state.server.start(&app, &profile, &settings).await
 }
 

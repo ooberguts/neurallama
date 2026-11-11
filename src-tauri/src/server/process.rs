@@ -163,6 +163,11 @@ impl ServerManager {
         self.inner.logs.tail(n)
     }
 
+    /// Endpoint captured at launch, even when the user has saved new settings for next time.
+    pub fn connection(&self) -> Option<(String, String)> {
+        self.inner.endpoint.lock().as_ref().map(|ep| (ep.base_url.clone(), ep.api_key.clone()))
+    }
+
     pub fn pid(&self) -> Option<u32> {
         self.inner.run.lock().as_ref().and_then(|r| r.pid)
     }
@@ -366,7 +371,15 @@ impl Inner {
 
             let preview = args::build(&profile, &settings, &exe);
             let shown = args::redacted_display(&preview.program, &preview.args);
-            self.logs.begin_run(vec![settings.api_key.trim().to_string()]);
+            let mut secrets = vec![settings.api_key.trim().to_string()];
+            for (i, arg) in preview.args.iter().enumerate() {
+                if arg == "--api-key" {
+                    secrets.extend(preview.args.get(i + 1).cloned());
+                } else if let Some(key) = arg.strip_prefix("--api-key=") {
+                    secrets.push(key.to_string());
+                }
+            }
+            self.logs.begin_run(secrets);
             self.logs.note(&format!("Starting: {shown}"));
 
             let mut cmd = Command::new(&exe);
@@ -1021,6 +1034,13 @@ mod tests {
         assert_eq!(mgr.vram_allocations_mib(), Some(1100.0));
         assert!(mgr.log_tail(100).iter().any(|l| l.contains("server is listening")));
         assert!(!mgr.log_tail(1000).iter().any(|l| l.contains("nl-testkey")));
+
+        let pid_before = mgr.pid();
+        let missing = Profile { model_path: root.join("missing.gguf").display().to_string(), ..profile.clone() };
+        assert!(mgr.inner.clone().start_inner(None, missing, settings.clone(), true, None).await.is_err());
+        assert_eq!(mgr.pid(), pid_before);
+        assert_eq!(mgr.status().state, ServerState::Ready);
+        assert_eq!(mgr.connection(), Some((settings.base_url(), settings.api_key.clone())));
 
         // A second manager sees the running server and attaches instead of spawning.
         let other = ServerManager::new(paths.clone());

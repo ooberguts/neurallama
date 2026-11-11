@@ -105,7 +105,11 @@ pub async fn fetch_resumable(
     if have > 0 {
         req = req.header(reqwest::header::RANGE, format!("bytes={have}-"));
     }
-    let resp = hf::with_auth(req, token).send().await.map_err(|e| format!("Download failed: {e}"))?;
+    let resp = tokio::select! {
+        r = hf::with_auth(req, token).send() => r.map_err(|e| format!("Download failed: {e}"))?,
+        _ = handle.until_cancelled() => return Ok(Outcome::Cancelled),
+        _ = handle.until_paused() => return Ok(Outcome::Paused),
+    };
     let status = resp.status();
     if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
         // Our partial file doesn't fit the remote one: start over next time.
@@ -125,7 +129,7 @@ pub async fn fetch_resumable(
             .get(reqwest::header::CONTENT_RANGE)
             .and_then(|v| v.to_str().ok())
             .and_then(parse_content_range_start);
-        if start.is_some_and(|s| s != have) {
+        if start != Some(have) {
             let _ = tokio::fs::remove_file(part).await;
             return Err("The server resumed at the wrong offset; the partial file was discarded. Try again.".into());
         }
@@ -151,9 +155,17 @@ pub async fn fetch_resumable(
         if handle.paused() {
             break Outcome::Paused;
         }
-        let next = tokio::time::timeout(CHUNK_TIMEOUT, stream.next())
-            .await
-            .map_err(|_| "Download stalled (no data for 60 s). Resume to continue.".to_string())?;
+        let next = tokio::select! {
+            _ = handle.until_cancelled() => break Outcome::Cancelled,
+            _ = handle.until_paused() => break Outcome::Paused,
+            r = tokio::time::timeout(CHUNK_TIMEOUT, stream.next()) => match r {
+                Ok(next) => next,
+                Err(_) => {
+                    let _ = out.flush().await;
+                    return Err("Download stalled (no data for 60 s). Resume to continue.".into());
+                }
+            },
+        };
         match next {
             None => break Outcome::Done,
             Some(Err(e)) => {
@@ -188,8 +200,10 @@ pub async fn finalize(part: &Path, dest: &Path, expected: Option<u64>) -> Result
             return Err(format!("Size check failed for {} (got {len} bytes, expected {exp}). The file was discarded.", dest.display()));
         }
     }
+    // The job registry reserves every destination until publication/cleanup finishes.
+    // Preserve an existing destination instead of deleting it before a fallible rename.
     if tokio::fs::metadata(dest).await.is_ok() {
-        let _ = tokio::fs::remove_file(dest).await;
+        return Err(format!("{} already exists; it was left unchanged. Delete it before retrying.", dest.display()));
     }
     tokio::fs::rename(part, dest).await.map_err(|e| format!("Could not move the finished file into place: {e}"))
 }
@@ -238,6 +252,18 @@ struct Spec {
     dir: PathBuf,
     files: Vec<(String, u64)>,
     running: bool,
+}
+
+fn same_destination(a: &Path, b: &Path) -> bool {
+    if cfg!(windows) {
+        a.to_string_lossy().replace('\\', "/").to_lowercase() == b.to_string_lossy().replace('\\', "/").to_lowercase()
+    } else {
+        a == b
+    }
+}
+
+fn overlaps(a: &Spec, dir: &Path, files: &[(String, u64)]) -> bool {
+    a.files.iter().any(|(left, _)| files.iter().any(|(right, _)| same_destination(&a.dir.join(left), &dir.join(right))))
 }
 
 fn registry() -> &'static Mutex<HashMap<String, Spec>> {
@@ -317,10 +343,17 @@ pub async fn start(app: &AppHandle, repo_id: &str, files: Vec<String>) -> Result
         1 => format!("{repo_id} · {}", sized[0].0),
         n => format!("{repo_id} · {} (+{} more)", sized[0].0, n - 1),
     };
-    let (id, _handle) = state.jobs.create("download", &label);
-    let total: u64 = sized.iter().map(|(_, s)| s).sum();
-    set_job(app, &id, |p| p.total = Some(total));
-    registry().lock().insert(id.clone(), Spec { repo_id: repo_id.into(), dir, files: sized, running: false });
+    let id = {
+        let mut reg = registry().lock();
+        if reg.values().any(|s| overlaps(s, &dir, &sized)) {
+            return Err("One of these files already belongs to a download. Resume or cancel that job first.".into());
+        }
+        let (id, _handle) = state.jobs.create("download", &label);
+        let total: u64 = sized.iter().map(|(_, s)| s).sum();
+        set_job(app, &id, |p| p.total = Some(total));
+        reg.insert(id.clone(), Spec { repo_id: repo_id.into(), dir, files: sized, running: false });
+        id
+    };
     spawn(app.clone(), id.clone());
     Ok(id)
 }
@@ -335,13 +368,7 @@ fn spawn(app: AppHandle, id: String) {
     }
     tauri::async_runtime::spawn(async move {
         let result = run(&app, &id).await;
-        let spec = {
-            let mut reg = registry().lock();
-            if let Some(s) = reg.get_mut(&id) {
-                s.running = false;
-            }
-            reg.get(&id).cloned()
-        };
+        let spec = registry().lock().get(&id).cloned();
         match result {
             Ok(Outcome::Done) => {
                 registry().lock().remove(&id);
@@ -361,11 +388,20 @@ fn spawn(app: AppHandle, id: String) {
                     p.message = Some("Cancelled; partial files deleted.".into());
                 });
             }
-            Ok(Outcome::Paused) => {}
-            Err(e) => set_job(&app, &id, |p| {
-                p.state = JobState::Error;
-                p.message = Some(e);
-            }),
+            Ok(Outcome::Paused) | Err(_) => {
+                // Keep the registry lock through the state transition: Resume cannot start
+                // a second worker while this one still owns cleanup or a partial file.
+                let mut reg = registry().lock();
+                if let Some(s) = reg.get_mut(&id) {
+                    s.running = false;
+                }
+                if let Err(e) = result {
+                    set_job(&app, &id, |p| {
+                        p.state = JobState::Error;
+                        p.message = Some(e);
+                    });
+                }
+            },
         }
     });
 }
@@ -456,6 +492,9 @@ pub fn pause(app: &AppHandle, id: &str) -> Result<(), String> {
 /// Resume a paused job, or restart one that stopped with an error (keeps the .part files).
 pub fn resume(app: &AppHandle, id: &str) -> Result<(), String> {
     let state = app.state::<AppState>();
+    if state.jobs.handle(id).is_some_and(|h| h.cancelled()) {
+        return Err("This job was cancelled. Start a new download.".into());
+    }
     if !state.jobs.set_paused(id, false) {
         return Err("No such download.".into());
     }
@@ -471,7 +510,13 @@ pub async fn cancel(app: &AppHandle, id: &str) -> Result<(), String> {
     if !state.jobs.cancel(id) {
         return Err("No such job.".into());
     }
-    let idle = registry().lock().get(id).filter(|s| !s.running).cloned();
+    let idle = {
+        let mut reg = registry().lock();
+        reg.get_mut(id).filter(|s| !s.running).map(|s| {
+            s.running = true; // reserve ownership during asynchronous cleanup
+            s.clone()
+        })
+    };
     if let Some(spec) = idle {
         delete_parts(&spec).await;
         registry().lock().remove(id);
@@ -499,6 +544,58 @@ mod tests {
             "https://huggingface.co/unsloth/Q-GGUF/resolve/main/BF16/a%20b.gguf"
         );
         assert!(free_space(&std::env::temp_dir()).is_some());
+    }
+
+    #[test]
+    fn overlapping_jobs_reserve_only_their_files() {
+        let spec = Spec { repo_id: "org/repo".into(), dir: PathBuf::from("models/org/repo"), files: vec![("a.gguf".into(), 100)], running: false };
+        assert!(overlaps(&spec, Path::new("models/org/repo"), &[("a.gguf".into(), 100)]));
+        assert!(!overlaps(&spec, Path::new("models/org/repo"), &[("b.gguf".into(), 100)]));
+        assert!(!overlaps(&spec, Path::new("models/other/repo"), &[("a.gguf".into(), 100)]));
+    }
+
+    #[tokio::test]
+    async fn finalization_preserves_existing_files() {
+        let dir = crate::models::gguf::tests::tmp_dir("existing-dl");
+        let dest = dir.join("model.gguf");
+        let part = part_path(&dest);
+        std::fs::write(&dest, b"original").unwrap();
+        std::fs::write(&part, b"new").unwrap();
+        assert!(finalize(&part, &dest, Some(3)).await.is_err());
+        assert_eq!(std::fs::read(&dest).unwrap(), b"original");
+        assert_eq!(std::fs::read(&part).unwrap(), b"new");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn cancels_a_stalled_download_without_waiting_for_chunk_timeout() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/file", listener.local_addr().unwrap());
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0; 4096];
+            socket.read(&mut request).await.unwrap();
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nabc").await.unwrap();
+            let _ = tx.send(());
+            std::future::pending::<()>().await;
+        });
+        let dir = crate::models::gguf::tests::tmp_dir("cancel-dl");
+        let part = dir.join("model.part");
+        let handle = JobHandle::default();
+        let cancel = handle.clone();
+        tokio::spawn(async move {
+            rx.await.unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            cancel.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+        let mut cb = |_| {};
+        let result = tokio::time::timeout(Duration::from_secs(3), fetch_resumable(&reqwest::Client::new(), &url, None, &part, Some(100), &handle, &mut cb)).await.unwrap().unwrap();
+        assert_eq!(result, Outcome::Cancelled);
+        assert_eq!(std::fs::read(&part).unwrap(), b"abc");
+        server.abort();
+        std::fs::remove_dir_all(dir).ok();
     }
 
     /// Serve one file over a raw TCP socket, optionally ignoring Range, and check resume.

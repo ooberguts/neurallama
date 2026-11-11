@@ -20,7 +20,7 @@
 
   // ---- lifetime stats ----
   let stats = $state<ModelStats[]>([]);
-  const loadStats = () => busy.run("stats", async () => (stats = await api.statsList()));
+  const loadStats = () => busy.run("stats", async () => { stats = await api.statsList(); });
 
   // ---- engine row ----
   let installed = $state<InstalledEngine[]>([]);
@@ -102,7 +102,7 @@
 
   async function resetStats() {
     if (!arm.fire("reset")) return;
-    await busy.run("stats", async () => (stats = await api.statsReset(null)));
+    await busy.run("stats", async () => { stats = await api.statsReset(null); });
   }
 
   // ---- logs ----
@@ -210,8 +210,8 @@
       <div class="rsub ell">
         {#if relErr}<span class="warn">Release check failed: {relErr}</span>
         {:else if !latest}checking for updates…
-        {:else if newer}<span class="acc">{latest.tag} available</span> · {date(latest.publishedAt)}
-        {:else}up to date ({latest.tag}){/if}
+        {:else if newer}<span class="acc">{latest.stableTag ? `${latest.stableTag} (${latest.tag})` : latest.tag} available</span> · {date(latest.publishedAt)}
+        {:else}up to date ({latest.stableTag ?? latest.tag}){/if}
       </div>
     </div>
     {#if newer}
@@ -253,6 +253,7 @@
   <input type="search" class="filter" placeholder="Filter" aria-label="Filter log lines" bind:value={filter} />
   <button class="mini" onclick={() => copy(server.logs.slice(-200).join("\n"), "Copied last 200 log lines")}>Copy last 200 lines</button>
 </div>
+<!-- svelte-ignore a11y_no_noninteractive_tabindex (scrollable log must be keyboard-scrollable) -->
 <pre class="code log" bind:this={logEl} onscroll={onLogScroll} aria-label="Server log" tabindex="0">{shown || (filter ? "No matching lines." : "No log output yet.")}</pre>
 
 <style>

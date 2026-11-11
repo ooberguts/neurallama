@@ -203,7 +203,7 @@ pub async fn install(app: &AppHandle, tag: &str, asset_name: &str) -> Result<Str
                 p.message = Some("Install cancelled.".into());
             }),
             Err(e) => download::set_job(&app2, &id2, |p| {
-                p.state = JobState::Error;
+                p.state = if handle.cancelled() { JobState::Cancelled } else { JobState::Error };
                 p.message = Some(e);
             }),
         }
@@ -268,6 +268,7 @@ async fn run(
     let staging = tmp.join("out");
     let (staging2, final2, marker2) = (staging.clone(), final_dir.to_path_buf(), marker.clone());
     let folder = folder.to_string();
+    let handle2 = handle.clone();
     tokio::task::spawn_blocking(move || -> Result<(), String> {
         for z in &zips {
             extract_zip(z, &staging2)?;
@@ -277,8 +278,11 @@ async fn run(
         }
         let text = serde_json::to_string_pretty(&marker2).map_err(|e| e.to_string())?;
         std::fs::write(staging2.join(MARKER), text).map_err(|e| e.to_string())?;
+        if handle2.cancelled() {
+            return Err("Install cancelled before activation.".into());
+        }
         if final2.exists() {
-            std::fs::remove_dir_all(&final2).map_err(|e| format!("Could not replace {folder}: {e}"))?;
+            return Err(format!("{folder} already exists; it was left unchanged."));
         }
         std::fs::rename(&staging2, &final2).map_err(|e| format!("Could not move {folder} into place: {e}"))
     })

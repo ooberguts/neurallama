@@ -134,6 +134,8 @@ export interface Release {
   prerelease: boolean;
   htmlUrl: string;
   assets: EngineAsset[];
+  /** Stable channel: the GitHub `v*` release tag this `b*` build belongs to. */
+  stableTag?: string | null;
 }
 
 export interface DriverInfo {
