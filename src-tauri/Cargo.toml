@@ -1,0 +1,52 @@
+[package]
+name = "neurallama"
+version = "0.1.0"
+description = "Windows control panel for llama.cpp's llama-server"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "neurallama_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "native-tls"] }
+futures-util = "0.3"
+thiserror = "2"
+parking_lot = "0.12"
+regex = "1"
+dirs = "5"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+sysinfo = "0.33"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
+log = "0.4"
+
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+nvml-wrapper = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
