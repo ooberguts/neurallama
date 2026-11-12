@@ -1,9 +1,19 @@
-# Neurallama — resume checkpoint (2026-11-11)
+# Neurallama — Windows installer handoff (2026-11-11)
 
-The user explicitly asked to pause at a safe stopping point. Local implementation and
-verification are complete. **No GitHub repository was created, nothing was pushed, and
-Windows CI has not run.** Resume with publishing and Windows CI, after checking this
-checkout's status.
+The implementation is published at https://github.com/ooberguts/neurallama (public).
+Windows CI passed for code commit `5cb03e5`:
+https://github.com/ooberguts/neurallama/actions/runs/43141439957
+
+The run passed **88 Windows tests** and built and uploaded the NSIS installer `Neurallama_0.1.0_x64-setup.exe` as
+`neurallama-windows-installer`:
+https://github.com/ooberguts/neurallama/actions/runs/43141439957/artifacts/13910196590
+
+Installer SHA256: `100742782edf1a0ced7e9879d4f678f5f487cc97c405be4677067d6415a6fd06`.
+The downloaded artifact archive matched GitHub's published SHA256, and the extracted
+installer matched the archive byte for byte.
+
+The remaining acceptance step is testing this installer on the user's Windows/NVIDIA
+laptop. No release tag has been created. The local dev server is stopped.
 
 ## Product and established decisions
 
@@ -17,16 +27,15 @@ Qwen3.6-35B-A3B (MoE) and Qwen3.8-27B (dense) GGUFs.
 
 - Name: **Neurallama**; repo **ooberguts/neurallama**; environment variable
   `NEURALLAMA_HOME`; app data under `AI\neurallama`.
-- The prior handoff records the user's choice of a **public** GitHub repository. Do not
-  re-ask routine product decisions. `gh` is authenticated as `ooberguts`; the repository
-  did not exist when checked during this session.
+- The user chose a **public** GitHub repository; it is now created and pushed. `gh` is
+  authenticated as `ooberguts`. Do not re-ask established product decisions.
 - MIT license, Copyright (c) 2026 ooberguts.
 - No UI/chart libraries. Restart the server when switching models. Download llama.cpp
   on first run. NSIS installer, per-user, no admin, unsigned.
 - reqwest uses native TLS (SChannel on Windows), allowing Mac Windows cross-checks.
 - The generated icon is still a placeholder.
 
-## Completed at this checkpoint
+## Completed implementation
 
 The previously unfinished UI now builds and type-checks. Connect and Settings tabs are
 complete. All **50** frontend command names, registrations and camelCase argument
@@ -58,7 +67,13 @@ Regression tests cover overlapping downloads, preserving existing files, cancell
 a stalled stream, extra-key redaction, failed settings writes and server-operation
 ownership. The fake-server lifecycle test also checks failed replacement validation.
 
-## Verification already completed
+The first Windows CI run compiled and linked but its tests failed to start with
+`STATUS_ENTRYPOINT_NOT_FOUND`. Commit `5cb03e5` embeds the Common Controls v6 manifest
+through the MSVC linker for test executables as well as the application. The next run
+passed the Windows tests. See the source comment in `src-tauri/build.rs` for the upstream
+Tauri issue and rationale.
+
+## Verification completed
 
 - `npm run build`: passes.
 - `npm run check`: **0 errors, 0 warnings**.
@@ -66,6 +81,8 @@ ownership. The fake-server lifecycle test also checks failed replacement validat
 - `cargo clippy -- -D warnings`: passes.
 - `cargo check --target x86_64-pc-windows-msvc`: passes (check-only resource shim).
 - `git diff --check`: passes.
+- Real Windows CI: dependency install, UI type checks, Rust tests, release build and
+  NSIS installer upload all passed. See the run linked above.
 - Browser mock: all five tabs inspected at **480×640** and **400×480**, in both light and
   dark. Hermes default-profile first click leaves the config unchanged and requires a
   second click within five seconds. Benchmark cancellation was exercised. Final browser
@@ -73,26 +90,25 @@ ownership. The fake-server lifecycle test also checks failed replacement validat
 
 The browser mock supports `?theme=light` and `?theme=dark` in Vite development only;
 production follows the OS palette. Port 1420 was occupied by another app, so this session
-used `npm run dev -- --host 127.0.0.1 --port 1421`. Its server is stopped for this pause.
+used `npm run dev -- --host 127.0.0.1 --port 1421`. Its development server is stopped.
 
-## Resume here
+## Resume here — target laptop testing
 
-1. Read this file, inspect `git status` and `git log -5 --oneline`. The implementation is
-   saved in a local checkpoint commit. Do not discard any newer user changes.
-2. Review the committed diff and optionally rerun local checks if the source changed.
-3. Create and push the already-planned public repository:
-
-   ```sh
-   gh repo create ooberguts/neurallama --public --source . --remote origin --description "Windows control panel for llama.cpp's llama-server: models, VRAM fit calculator, monitoring, Hermes Agent wiring" --push
-   ```
-
-4. Watch the first `.github/workflows/build.yml` run on `windows-latest`. It runs `npm ci`,
-   UI type checks, Windows Rust tests and `npx tauri build`, then uploads the
-   `neurallama-windows-installer` NSIS artifact. Fix actual failures until green. This is
-   the first real Windows compile/link; a cross-check is not a substitute.
-5. Give the user the installer artifact and the target-machine acceptance checks in
-   SPEC §9. Hardware testing remains necessary. Tagging `v0.1.0` to draft a release is
+1. Read this file and inspect `git status` and `git log -5 --oneline` before editing.
+   The public remote is `origin` at https://github.com/ooberguts/neurallama.git.
+2. Download `Neurallama_0.1.0_x64-setup.exe` from the Actions artifact linked above and install it on
+   the Windows 11 RTX 5090 laptop. The installer is unsigned and per-user.
+3. Exercise SPEC §9: install a CUDA engine, download a GGUF, Serve, then Connect → Test.
+4. Compare the VRAM forecast with an actual Qwen3.6-35B-A3B load at 128K/q8 KV. Check
+   auto-tune, benchmark and cancellation, crash messages, and app exit killing the child.
+5. Verify native/WSL Hermes wiring and backups on actual installed profiles. Do not
+   overwrite default profiles without the explicit second click.
+6. File/fix hardware findings. A `v0.1.0` tag would draft a GitHub Release; tagging remains
    optional and has not been done.
+
+There is no need to recreate the repository or rerun the first-build setup. A documentation
+update after the successful build uses `[skip ci]`; the installer corresponds to code
+commit `5cb03e5`.
 
 ## Mac development notes
 
@@ -115,7 +131,7 @@ done
 exit 0
 ```
 
-This compiles no Windows resources. Only CI can verify real Windows compilation/linking.
+This compiles no Windows resources. The linked CI run verified real Windows compilation/linking.
 
 ## Important remaining limits
 
